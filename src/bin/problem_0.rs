@@ -6,7 +6,7 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let tcp_listener = TcpListener::bind("127.0.0.1:8080").await?;
+    let tcp_listener = TcpListener::bind("0.0.0.0:8080").await?;
 
     println!("Running server for Problem 0 on port 8080");
 
