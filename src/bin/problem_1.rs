@@ -1,7 +1,7 @@
 use std::io::Result as IO_Result;
 
 use serde::{Deserialize, Serialize};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpListener;
 
@@ -31,36 +31,31 @@ async fn main() -> IO_Result<()> {
 }
 
 async fn check_prime(reader: &mut OwnedReadHalf, writer: &mut OwnedWriteHalf) -> IO_Result<()> {
-    let mut payload_buffer = Vec::new();
-    reader.read_to_end(&mut payload_buffer).await?;
+    let reader = BufReader::new(reader);
+    let mut request_lines = reader.lines();
 
-    if let Ok(payload_string) = String::from_utf8(payload_buffer) {
-        let requests: Vec<Option<f64>> = payload_string.lines().map(parse_request).collect();
+    let mut writer = BufWriter::new(writer);
 
-        let mut response_strings: Vec<String> = Vec::new();
+    while let Some(request_line) = request_lines.next_line().await? {
+        println!("Line: {}", request_line);
+        if let Some(n) = parse_request(&request_line) {
+            // Request in this lines was valid -> Respond prime check result
+            let response = MethodResponse {
+                method: String::from("isPrime"),
+                prime: is_prime(n),
+            };
+            let response_json = serde_json::to_string(&response)?;
 
-        for request in requests {
-            if let Some(n) = request {
-                // Request in this lines was valid -> Respond prime check result
-                let response = MethodResponse {
-                    method: String::from("isPrime"),
-                    prime: is_prime(n),
-                };
-
-                let response_json = serde_json::to_string(&response)?;
-                response_strings.push(response_json);
-            } else {
-                // Request in this line was malformed -> Respond with malformed response
-                response_strings.push(String::from("{}"));
-            }
+            writer
+                .write_all(format!("{}\n", response_json).as_bytes())
+                .await?;
+            writer.flush().await?;
+        } else {
+            // Request in this line was malformed -> Respond with malformed response and stop
+            writer.write_all(b"{}").await?;
+            writer.flush().await?;
+            break;
         }
-
-        writer
-            .write_all(response_strings.join("\n").as_bytes())
-            .await?;
-    } else {
-        // Request is not valid UTF-8 -> Respond with malformed response
-        writer.write_all(b"{}").await?;
     }
 
     Ok(())
