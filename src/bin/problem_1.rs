@@ -76,7 +76,7 @@ fn parse_request(request_payload: &str) -> Option<f64> {
 }
 
 fn is_prime(n: f64) -> bool {
-    if n.trunc() == n {
+    if n > 0.0 && n.trunc() == n {
         // n is integer -> Check if prime number
         let n_int = n.trunc() as i64;
         return if n_int <= 3 {
@@ -123,8 +123,9 @@ mod tests {
 
     #[test]
     fn test_prime_check() {
+        assert!(!is_prime(-1.0));
+        assert!(!is_prime(0.0));
         assert!(!is_prime(1.2345));
-        assert!(is_prime(0.0));
         assert!(is_prime(1.0));
         assert!(is_prime(2.0));
         assert!(is_prime(3.0));
