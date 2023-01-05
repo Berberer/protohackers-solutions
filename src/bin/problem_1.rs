@@ -37,7 +37,6 @@ async fn check_prime(reader: &mut OwnedReadHalf, writer: &mut OwnedWriteHalf) ->
     let mut writer = BufWriter::new(writer);
 
     while let Some(request_line) = request_lines.next_line().await? {
-        println!("Line: {}", request_line);
         if let Some(n) = parse_request(&request_line) {
             // Request in this lines was valid -> Respond prime check result
             let response = MethodResponse {
@@ -46,12 +45,16 @@ async fn check_prime(reader: &mut OwnedReadHalf, writer: &mut OwnedWriteHalf) ->
             };
             let response_json = serde_json::to_string(&response)?;
 
+            println!("Request {} -> {}", request_line, response_json);
+
             writer
                 .write_all(format!("{}\n", response_json).as_bytes())
                 .await?;
             writer.flush().await?;
         } else {
             // Request in this line was malformed -> Respond with malformed response and stop
+            println!("Request {} was malformed", request_line);
+
             writer.write_all(b"{}").await?;
             writer.flush().await?;
             break;
