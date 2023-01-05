@@ -35,11 +35,15 @@ async fn main() -> IO_Result<()> {
         );
 
         let (mut tcp_socket_reader, mut tcp_socket_writer) = tcp_socket_stream.into_split();
-        check_prime(&mut tcp_socket_reader, &mut tcp_socket_writer).await?;
-        println!(
-            "Closed connection {} to {:?}",
-            current_connection, client_address
-        );
+
+        tokio::spawn(async move {
+            let task_result = check_prime(&mut tcp_socket_reader, &mut tcp_socket_writer).await;
+            println!(
+                "Closed connection {} to {:?}",
+                current_connection, client_address
+            );
+            task_result
+        });
     }
 }
 
