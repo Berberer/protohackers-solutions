@@ -23,10 +23,23 @@ async fn main() -> IO_Result<()> {
 
     println!("Running server for Problem 1 on port 8080");
 
+    let mut conn_counter = 1;
+
     loop {
-        let (tcp_socket_stream, _) = tcp_listener.accept().await?;
+        let (tcp_socket_stream, client_address) = tcp_listener.accept().await?;
+        let current_connection = conn_counter;
+        conn_counter += 1;
+        println!(
+            "Established connection {} from {:?}",
+            current_connection, client_address
+        );
+
         let (mut tcp_socket_reader, mut tcp_socket_writer) = tcp_socket_stream.into_split();
         check_prime(&mut tcp_socket_reader, &mut tcp_socket_writer).await?;
+        println!(
+            "Closed connection {} to {:?}",
+            current_connection, client_address
+        );
     }
 }
 
