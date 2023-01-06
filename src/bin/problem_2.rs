@@ -97,18 +97,17 @@ fn calculate_asset_price_average(
     from_timestamp: i32,
     to_timestamp: i32,
 ) -> i32 {
-    let prices_in_timeframe: Vec<i32> = prices
-        .iter()
-        .filter(|(timestamp, _)| from_timestamp <= *timestamp && *timestamp <= to_timestamp)
-        .map(|(_, price)| *price)
-        .collect();
+    let mut average = 0.0;
+    let mut number_of_prices = 0.0;
 
-    if prices_in_timeframe.is_empty() {
-        0
-    } else {
-        let price_sum: i32 = prices_in_timeframe.iter().cloned().sum();
-        price_sum / (prices_in_timeframe.len() as i32)
+    for (timestamp, price) in prices.iter().cloned() {
+        if from_timestamp <= timestamp && timestamp <= to_timestamp {
+            number_of_prices += 1.0;
+            average += (price as f64 - average) / number_of_prices;
+        }
     }
+
+    average as i32
 }
 
 #[cfg(test)]
