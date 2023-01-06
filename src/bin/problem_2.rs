@@ -39,7 +39,7 @@ async fn handle_asset_requests(
     let mut current_request_buffer = [0_u8; 9];
     let mut asset_prices = Vec::new();
 
-    while let Ok(9) = reader.read(&mut current_request_buffer).await {
+    while let Ok(9) = reader.read_exact(&mut current_request_buffer).await {
         match parse_request(&current_request_buffer) {
             Ok(RequestType::Insert(timestamp, price)) => {
                 println!("[Asset {}] Insert for {}: {}", asset_id, timestamp, price);
@@ -102,8 +102,13 @@ fn calculate_asset_price_average(
         .filter(|(timestamp, _)| from_timestamp <= *timestamp && *timestamp <= to_timestamp)
         .map(|(_, price)| *price)
         .collect();
-    let price_sum: i32 = prices_in_timeframe.iter().cloned().sum();
-    price_sum / (prices_in_timeframe.len() as i32)
+
+    if prices_in_timeframe.is_empty() {
+        0
+    } else {
+        let price_sum: i32 = prices_in_timeframe.iter().cloned().sum();
+        price_sum / (prices_in_timeframe.len() as i32)
+    }
 }
 
 #[cfg(test)]
@@ -156,6 +161,7 @@ mod tests {
     #[test]
     fn test_average_calculation() {
         let prices = vec![(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)];
+        assert_eq!(calculate_asset_price_average(&prices, 10, 11), 0);
         assert_eq!(calculate_asset_price_average(&prices, 1, 3), 3);
     }
 }
