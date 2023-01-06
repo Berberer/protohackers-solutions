@@ -1,5 +1,4 @@
 use std::io::Result as IO_Result;
-use std::str;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -56,10 +55,8 @@ async fn handle_asset_requests(
                 writer.flush().await?;
             }
             Err(error_description) => println!(
-                "[Asset {}] Malformed request {}: {}",
-                asset_id,
-                str::from_utf8(&current_request_buffer).unwrap(),
-                error_description
+                "[Asset {}] Malformed request {:02X?}: {}",
+                asset_id, current_request_buffer, error_description
             ),
         }
     }
