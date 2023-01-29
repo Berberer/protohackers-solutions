@@ -7,7 +7,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, Lines};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
-use tokio::sync::broadcast::{Receiver, Sender};
+use tokio::sync::broadcast::Sender;
 
 enum UserPreambleError<D> {
     Protocol(D),
@@ -19,7 +19,6 @@ struct ChatRoomClient {
     user_name: Option<String>,
     socket_reader: Lines<BufReader<OwnedReadHalf>>,
     socket_writer: BufWriter<OwnedWriteHalf>,
-    broadcast_receiver: Receiver<(i32, String)>,
     broadcast_sender: Sender<(i32, String)>,
 }
 
@@ -33,9 +32,7 @@ impl ChatRoomClient {
     }
 
     fn broadcast_message(&self, message: String) {
-        self.broadcast_sender
-            .send((self.connection_id, message))
-            .unwrap();
+        let _ = self.broadcast_sender.send((self.connection_id, message));
     }
 
     fn broadcast_join_message(&self) {
@@ -86,6 +83,7 @@ impl ChatRoomClient {
     }
 
     async fn process_message_interchange(&mut self) -> IO_Result<()> {
+        let mut broadcast_receiver = self.broadcast_sender.subscribe();
         loop {
             tokio::select! {
                 user_message_line = self.socket_reader.next_line() => match user_message_line {
@@ -95,7 +93,7 @@ impl ChatRoomClient {
                     },
                     _ => break,
                 },
-                participant_message = self.broadcast_receiver.recv() => match participant_message {
+                participant_message = broadcast_receiver.recv() => match participant_message {
                     Ok((participant_conn_id, participant_message_text)) => {
                         if self.connection_id != participant_conn_id {
                             self.send_message_to_user(participant_message_text).await?;
@@ -134,7 +132,6 @@ async fn main() -> IO_Result<()> {
             user_name: None,
             socket_reader: BufReader::new(tcp_socket_reader).lines(),
             socket_writer: BufWriter::new(tcp_socket_writer),
-            broadcast_receiver: broadcast_sender.subscribe(),
             broadcast_sender,
         };
 
@@ -147,7 +144,7 @@ async fn main() -> IO_Result<()> {
                     println!("[{current_connection}] New user joined: {user_name}");
                     // Check if name is already used
                     if let Ok(participant_names_list) =
-                        try_join_with_user_name(&user_name, participant_user_names)
+                        try_join_with_user_name(&user_name, Arc::clone(&participant_user_names))
                     {
                         // Valid name -> Send list of current participant names to new user
                         chat_room_client
@@ -183,6 +180,10 @@ async fn main() -> IO_Result<()> {
             // User disconnected -> Broadcast exit message
             println!("[{current_connection}] User disconnected");
             chat_room_client.broadcast_disconnect_message();
+            disconnect_user_name(
+                &chat_room_client.user_name.unwrap(),
+                Arc::clone(&participant_user_names),
+            );
             Ok(())
         });
     }
@@ -206,6 +207,14 @@ fn try_join_with_user_name(
         names.insert(new_user_name.clone());
         Ok(participants_list)
     }
+}
+
+fn disconnect_user_name(
+    disconnected_user_name: &String,
+    participant_user_names: Arc<Mutex<HashSet<String>>>,
+) {
+    let mut names = participant_user_names.lock().unwrap();
+    names.remove(disconnected_user_name);
 }
 
 fn is_valid_name(name: &str) -> bool {
