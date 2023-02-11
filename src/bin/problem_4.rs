@@ -33,14 +33,13 @@ impl Decoder for StringCodec {
     type Error = IO_Error;
 
     fn decode(&mut self, buffer: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        println!("Decoding frame: {} ({})", buffer.len(), self.clear_buffer);
         match (buffer.is_empty(), self.clear_buffer) {
             (false, false) => {
                 self.clear_buffer = true;
 
                 let frame_buffer = buffer.split_to(buffer.len());
                 let frame_buffer_bytes = frame_buffer.to_vec();
-                let frame_buffer_string = str::from_utf8(&frame_buffer_bytes).unwrap().trim();
+                let frame_buffer_string = str::from_utf8(&frame_buffer_bytes).unwrap();
 
                 Ok(Some(String::from(frame_buffer_string)))
             }
