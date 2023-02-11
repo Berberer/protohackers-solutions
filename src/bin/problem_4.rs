@@ -1,10 +1,12 @@
-use futures::StreamExt;
 use std::collections::HashMap;
-use std::io::Result as IO_Result;
+use std::io::{Error as IO_Error, Result as IO_Result};
+use std::str;
 use std::sync::{Arc, Mutex};
 
+use bytes::BytesMut;
+use futures::StreamExt;
 use tokio::net::UdpSocket;
-use tokio_util::codec::BytesCodec;
+use tokio_util::codec::Decoder;
 use tokio_util::udp::UdpFramed;
 
 #[derive(Debug, PartialEq)]
@@ -14,10 +16,52 @@ enum QueryType {
     Version,
 }
 
+struct StringCodec {
+    clear_buffer: bool,
+}
+
+impl StringCodec {
+    fn new() -> Self {
+        StringCodec {
+            clear_buffer: false,
+        }
+    }
+}
+
+impl Decoder for StringCodec {
+    type Item = String;
+    type Error = IO_Error;
+
+    fn decode(&mut self, buffer: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        println!("Decoding frame: {} ({})", buffer.len(), self.clear_buffer);
+        match (buffer.is_empty(), self.clear_buffer) {
+            (false, false) => {
+                self.clear_buffer = true;
+
+                let frame_buffer = buffer.split_to(buffer.len());
+                let frame_buffer_bytes = frame_buffer.to_vec();
+                let frame_buffer_string = str::from_utf8(&frame_buffer_bytes).unwrap().trim();
+
+                Ok(Some(String::from(frame_buffer_string)))
+            }
+            (true, false) => {
+                self.clear_buffer = true;
+
+                Ok(Some(String::new()))
+            }
+            (_, true) => {
+                self.clear_buffer = false;
+
+                Ok(None)
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> IO_Result<()> {
     let udp_socket = Arc::new(UdpSocket::bind("0.0.0.0:8080").await?);
-    let mut udp_framed = UdpFramed::new(Arc::clone(&udp_socket), BytesCodec::new());
+    let mut udp_framed = UdpFramed::new(Arc::clone(&udp_socket), StringCodec::new());
 
     println!("Running server for Problem 4 on port 8080");
 
@@ -29,12 +73,9 @@ async fn main() -> IO_Result<()> {
             let db = Arc::clone(&db);
 
             tokio::spawn(async move {
-                let query_string = String::from_utf8(request_query.freeze().to_vec()).unwrap();
-                let query_string = query_string.trim();
+                println!("[{client_address}] Request: {request_query}");
 
-                println!("[{client_address}] Request: {query_string}");
-
-                let query_result = execute_query(parse_query(query_string), db);
+                let query_result = execute_query(parse_query(&request_query), db);
                 if let Some(query_result_string) = query_result {
                     println!("[{client_address}] Response: {query_result_string}");
                     socket
@@ -96,6 +137,7 @@ mod tests {
         assert_eq!(parse_query("version"), QueryType::Version);
 
         // Retrieve query
+        assert_eq!(parse_query(""), QueryType::Retrieve(String::new()));
         assert_eq!(parse_query("foo"), QueryType::Retrieve(String::from("foo")));
         assert_eq!(
             parse_query("foo_bar"),
