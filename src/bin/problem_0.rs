@@ -1,7 +1,7 @@
 use std::io::Result;
+
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
-
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -13,7 +13,7 @@ async fn main() -> Result<()> {
     loop {
         let (tcp_socket_stream, _) = tcp_listener.accept().await?;
         let (mut tcp_socket_reader, mut tcp_socket_writer) = tcp_socket_stream.into_split();
-        echo(&mut tcp_socket_reader, &mut tcp_socket_writer).await?;
+        tokio::spawn(async move { echo(&mut tcp_socket_reader, &mut tcp_socket_writer).await });
     }
 }
 
