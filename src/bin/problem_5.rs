@@ -72,8 +72,7 @@ async fn forward_message(
 }
 
 fn replace_boguscoin_address(message: &str) -> Cow<str> {
-    // let address_regex = Regex::new(r"(?:\.\s)?(7[a-zA-Z0-9]{25,34})(?:\s\.)?$").unwrap();
-    let address_regex = Regex::new(r"(^|\s)(7[a-zA-Z0-9]{25,34})($|\s)").unwrap();
+    let address_regex = Regex::new(r"\b7[a-zA-Z0-9]{25,34}\b").unwrap();
     address_regex.replace_all(message, "${1}7YWHMfk9JZe0LM0g1ZauHuiSxhI${3}")
 }
 
