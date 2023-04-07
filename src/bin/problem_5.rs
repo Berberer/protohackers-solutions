@@ -1,27 +1,52 @@
-use fancy_regex::Regex;
 use std::borrow::Cow;
 use std::io::{Error as IO_Error, Result as IO_Result};
 
+use bytes::{Buf, BytesMut};
+use fancy_regex::Regex;
+use itertools::Itertools;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::tcp::OwnedWriteHalf;
 use tokio::net::{TcpListener, TcpStream};
+use tokio_stream::StreamExt;
+use tokio_util::codec::{Decoder, FramedRead};
+
+struct StringCodec;
+
+impl Decoder for StringCodec {
+    type Item = String;
+    type Error = IO_Error;
+
+    fn decode(&mut self, buffer: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        if let Some((i, _)) = buffer.iter().find_position(|byte| **byte == b'\n') {
+            let line_bytes = buffer.split_to(i);
+            let line_string = String::from_utf8(line_bytes.to_vec()).unwrap();
+
+            buffer.advance(1);
+
+            Ok(Some(line_string))
+        } else {
+            Ok(None)
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> IO_Result<()> {
     let tcp_listener = TcpListener::bind("0.0.0.0:8080").await?;
     let mut conn_counter = 0;
 
-    println!("Running server for Problem 3 on port 8080");
+    println!("Running server for Problem 5 on port 8080");
 
     loop {
         let (tcp_socket_stream, client_address) = tcp_listener.accept().await?;
         let (tcp_socket_reader, tcp_socket_writer) = tcp_socket_stream.into_split();
+
         conn_counter += 1;
         let current_connection = conn_counter;
         println!("Established connection {current_connection} from {client_address}");
 
         tokio::spawn(async move {
-            let mut user_message_lines = BufReader::new(tcp_socket_reader).lines();
+            let mut framed_tcp_socket_stream = FramedRead::new(tcp_socket_reader, StringCodec);
             let mut user_message_writer = BufWriter::new(tcp_socket_writer);
 
             // Connect to remote chat tcp socket for this user
@@ -32,23 +57,23 @@ async fn main() -> IO_Result<()> {
 
             loop {
                 tokio::select! {
-                        user_message_line = user_message_lines.next_line() => match user_message_line {
-                            Ok(Some(user_message)) => {
-                                // New user message -> Forward to chat
-                                println!("[{current_connection}] User wrote message: {user_message}");
-                                forward_message(user_message, &mut chat_message_writer).await?;
-                            },
-                            _ => break,
+                    user_message_frame = framed_tcp_socket_stream.next() => match user_message_frame {
+                        Some(Ok(user_message)) if !user_message.is_empty() => {
+                            // New user message -> Forward to chat
+                            println!("[{current_connection}] User wrote message: {user_message}");
+                            forward_message(user_message, &mut chat_message_writer).await?;
                         },
-                        chat_message_line = chat_message_lines.next_line() => match chat_message_line {
-                            Ok(Some(chat_message)) => {
-                                // New chat message -> Forward to user
-                                println!("[{current_connection}] Chat wrote message: {chat_message}");
-                                forward_message(chat_message, &mut user_message_writer).await?;
-                            },
-                            _ => break,
-                }
+                        _ => break,
+                    },
+                    chat_message_line = chat_message_lines.next_line() => match chat_message_line {
+                        Ok(Some(chat_message)) => {
+                            // New chat message -> Forward to user
+                            println!("[{current_connection}] Chat wrote message: {chat_message}");
+                            forward_message(chat_message, &mut user_message_writer).await?;
+                        },
+                        _ => break,
                     }
+                }
             }
 
             println!("[{current_connection}] User disconnected");
